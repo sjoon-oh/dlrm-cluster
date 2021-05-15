@@ -40,6 +40,9 @@ $dlrm_pt_bin \
     --save-model="model/model-kaggle.pt" \
     --den-feature-num=13 \
     --cat-feature-num=26 \
+    --clusters=10 \
+    --ignore-transfer-map="yes" \
     --idx-2-gpu 2 11 15 20
+# --idx-2-gpu 2 11 15 20
 
 echo "done"

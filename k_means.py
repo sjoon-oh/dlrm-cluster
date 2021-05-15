@@ -36,13 +36,13 @@ class ClusterManager():
 
 
     def doClusterSingle(self, index):
+        print(f"Training K-Means for {index}!")
 
         train_q = self.queries[index].numpy().reshape(-1, 1)
 
         self.k_means_models[index].fit(train_q) # Train
         cid = self.k_means_models[index].predict(train_q) # Record
 
-        print(f"Training K-Means for {index}!")
         print(f"  cid size: {len(cid)}")
         print(f"  cid max: {max(cid)}")
 

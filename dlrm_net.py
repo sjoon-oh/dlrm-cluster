@@ -188,7 +188,7 @@ class DLRM_Net(nn.Module):
                 per_sample_weights=per_sample_weights,
             )
 
-            if self.top_l.is_cuda == True:
+            if next(self.parameters()).is_cuda == True:
                 if k in self.idx_2_cpu:
                     ly.append(V.cuda())
                 else: ly.append(V.cuda())
@@ -296,11 +296,7 @@ def dlrm_wrap(dlrm, X, lS_o, lS_i, use_gpu, device, idx_2_cpu):
     if use_gpu:  # .cuda()
         # lS_i can be either a list of tensors or a stacked tensor.
         # Handle each case below:
-        model_split_cpu_gpu(
-            dlrm,
-            use_gpu=use_gpu,
-            idx2cpu=idx_2_cpu
-        )
+        # Assumes that model is already on each device
 
         query_split_cpu_gpu(
             dlrm,
@@ -308,8 +304,6 @@ def dlrm_wrap(dlrm, X, lS_o, lS_i, use_gpu, device, idx_2_cpu):
             lS_i=lS_i,
             idx2cpu=idx_2_cpu
         )
-
-    
 
     return dlrm(X.to(device), lS_o, lS_i)
 

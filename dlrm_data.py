@@ -292,41 +292,49 @@ def new_make_criteo_loaders(args, train_data, test_data, transfer_map):
     print(f"transfer_map: len - {[len(lst) for lst in transfer_map]}")
     # Transfermap : list of list
 
-    X_cat = train_data.X_cat
-    print(f"X_cat (train_data): {len(X_cat)}")
-    for line in X_cat:
-        for fea in range(line.shape[0]):
-            if len(transfer_map[fea]) != 0:
-                line[fea] = transfer_map[fea][int(line[fea])]
-
-    X_cat = test_data.X_cat
-    print(f"X_cat (test_data): {len(X_cat)}")
-    for line in X_cat:
-        for fea in range(line.shape[0]):
-            if len(transfer_map[fea]) != 0:
-                line[fea] = transfer_map[fea][int(line[fea])]
-
     print("Generating new train_loader and test_loader.")
 
-    new_train_loader = torch.utils.data.DataLoader(
-        train_data,
-        batch_size=args.mini_batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        collate_fn=collate_wrapper_criteo_offset,
-        pin_memory=False,
-        drop_last=False,  # True
-    )
+    if train_data != None:
+        X_cat = train_data.X_cat
+        print(f"X_cat (train_data): {len(X_cat)}")
+        for line in X_cat:
+            for fea in range(line.shape[0]):
+                if len(transfer_map[fea]) != 0:
+                    line[fea] = transfer_map[fea][int(line[fea])]
+        
+        new_train_loader = torch.utils.data.DataLoader(
+            train_data,
+            batch_size=args.mini_batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            collate_fn=collate_wrapper_criteo_offset,
+            pin_memory=False,
+            drop_last=False,  # True
+        )
+    
+    else:
+        new_train_loader = None
 
-    new_test_loader = torch.utils.data.DataLoader(
-        test_data,
-        batch_size=args.test_mini_batch_size,
-        shuffle=False,
-        num_workers=args.test_num_workers,
-        collate_fn=collate_wrapper_criteo_offset,
-        pin_memory=False,
-        drop_last=False,  # True
-    )
+    if test_data != None:
+        X_cat = test_data.X_cat
+        print(f"X_cat (test_data): {len(X_cat)}")
+        for line in X_cat:
+            for fea in range(line.shape[0]):
+                if len(transfer_map[fea]) != 0:
+                    line[fea] = transfer_map[fea][int(line[fea])]
+
+        new_test_loader = torch.utils.data.DataLoader(
+            test_data,
+            batch_size=args.test_mini_batch_size,
+            shuffle=False,
+            num_workers=args.test_num_workers,
+            collate_fn=collate_wrapper_criteo_offset,
+            pin_memory=False,
+            drop_last=False,  # True
+        )
+
+    else:
+        new_test_loader = None
 
     return new_train_loader, new_test_loader
 

@@ -41,9 +41,11 @@ $dlrm_pt_bin \
     --inference-only \
     --den-feature-num=13 \
     --cat-feature-num=26 \
-    --idx-2-gpu=2 \
-    --idx-2-gpu=11 \
-    --idx-2-gpu=15 \
-    --idx-2-gpu=20
+    --clusters=10 \
+    --ignore-transfer-map="no" \
+    --idx-2-gpu 2 11 15 20
 
 echo "done"
+
+# When ignore-transfer-map is set to 0, 
+# it does not train k-means but reuse saved index map.

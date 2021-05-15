@@ -96,6 +96,7 @@ def inference(
     test_ld,
     device,
     use_gpu,
+    idx_2_cpu,
     log_iter=-1,
 ):
     test_accu = 0
@@ -118,7 +119,7 @@ def inference(
             lS_i_test,
             use_gpu,
             device,
-            ndevices=ndevices,
+            idx_2_cpu
         )
 
         if Z_test.is_cuda:
@@ -221,6 +222,9 @@ def prepare_parser():
     parser.add_argument("--den-feature-num", type=int, default=0)
 
     parser.add_argument("--idx-2-gpu", nargs='+', default=None)
+    parser.add_argument("--ignore-transfer-map", type=str, default="yes")
+
+    parser.add_argument("--clusters", type=int, default=2)
 
     return parser
 
@@ -277,7 +281,7 @@ def run():
     ln_emb = train_data.counts
     # enforce maximum limit on number of vectors per embedding
 
-    print(f"Embeddings count: {ln_emb}")
+    # print(f"Embeddings count: {ln_emb}")
 
     ln_emb = np.array(ln_emb)
     m_den = train_data.m_den
@@ -338,8 +342,6 @@ def run():
     # added
     ndevices = 1
 
-    print(f"ndevices: {ndevices}")
-
     ### construct the neural network specified above ###
     # WARNING: to obtain exactly the same initialization for
     # the weights we need to start from the same random seed.
@@ -358,59 +360,6 @@ def run():
         ndevices=ndevices,
         loss_function=args.loss_function
     )
-
-    # if use_gpu:
-        # Custom Model-Data Parallel
-        # the mlps are replicated and use data parallelism, while
-        # the embeddings are distributed and use model parallelism
-        # dlrm = dlrm.to(device)  # .cuda()
-
-
-    
-    #
-    #
-    # Added.
-    if args.idx_2_gpu == None: args.idx_2_gpu = []
-    else:
-        args.idx_2_gpu = [int(_) for _ in args.idx_2_gpu]
-
-    print(f"idx_2_gpu: {args.idx_2_gpu}")
-    
-    idx_2_cpu = [_ for _ in range(len(dlrm.emb_l)) if _ not in args.idx_2_gpu]
-    print(f"idx_2_cpu: {idx_2_cpu}")
-    dlrm.idx_2_cpu = idx_2_cpu # Register
-
-    import k_means
-    embedding_sizes = [int(_.num_embeddings) for _ in dlrm.emb_l]
-    cluster_enable = [False for _ in dlrm.emb_l]
-    # Set embedding_sizes to False if not want to cluster
-    
-    for idx in range(len(cluster_enable)):
-        cluster_enable[idx] = True if idx in args.idx_2_gpu else False
-    
-    transfer_map = \
-        k_means.generate_transfer_map(
-            train_dataset=train_data,
-            ln_emb=embedding_sizes,
-            n_clusters=100,
-            enable=cluster_enable
-        )    
-
-    # Exchange to index-transferred DataLoaders
-    train_ld, test_ld = \
-        dp.new_make_criteo_loaders(
-            args, 
-            train_data=train_data,
-            test_data=test_data,
-            transfer_map=transfer_map
-        )
-
-    # Register to dlrm_net
-    if dlrm.transfer_map == None:
-        dlrm.transfer_map = transfer_map
-
-    #
-    # -- end
 
     if not args.inference_only:
         if use_gpu and args.optimizer in ["rwsadagrad", "adagrad"]:
@@ -449,23 +398,9 @@ def run():
     # Load model is specified
     if not (args.load_model == ""):
         print("Loading saved model {}".format(args.load_model))
-        if use_gpu:
-            if dlrm.ndevices > 1:
-                # NOTE: when targeting inference on multiple GPUs,
-                # load the model as is on CPU or GPU, with the move
-                # to multiple GPUs to be done in parallel_forward
-                ld_model = torch.load(args.load_model)
-            else:
-                # NOTE: when targeting inference on single GPU,
-                # note that the call to .to(device) has already happened
-                ld_model = torch.load(
-                    args.load_model,
-                    map_location=torch.device("cuda")
-                    # map_location=lambda storage, loc: storage.cuda(0)
-                )
-        else:
-            # when targeting inference on CPU
-            ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
+        # when targeting inference on CPU
+        ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
+
         dlrm.load_state_dict(ld_model["state_dict"])
         ld_j = ld_model["iter"]
         ld_k = ld_model["epoch"]
@@ -486,32 +421,91 @@ def run():
             args.print_freq = ld_nbatches
             args.test_freq = 0
 
-        print(
-            "Saved at: epoch = {:d}/{:d}, batch = {:d}/{:d}, ntbatch = {:d}".format(
-                ld_k, ld_nepochs, ld_j, ld_nbatches, ld_nbatches_test
-            )
-        )
-        print(
-            "Training state: loss = {:.6f}".format(
-                ld_train_loss,
-            )
-        )
+        if args.ignore_transfer_map == 'yes':
+            dlrm.transfer_map = None
+        else:
+            dlrm.transfer_map = ld_model['transfer_map']
 
+        print(f"type: {type(dlrm.transfer_map)}")
+
+        print("Saved at: epoch = {:d}/{:d}, batch = {:d}/{:d}, ntbatch = {:d}".format(
+                ld_k, ld_nepochs, ld_j, ld_nbatches, ld_nbatches_test
+            ))
+        print("Training state: loss = {:.6f}".format(ld_train_loss))
         print("Testing state: accuracy = {:3.3f} %".format(ld_acc_test * 100))
 
-    if args.inference_only:
-        # Currently only dynamic quantization with INT8 and FP16 weights are
-        # supported for MLPs and INT4 and INT8 weights for EmbeddingBag
-        # post-training quantization during the inference.
-        # By default we don't do the quantization: quantize_{mlp,emb}_with_bit == 32 (FP32)
+    # --
+    #
+    # Added.
+    if args.idx_2_gpu == None: args.idx_2_gpu = []
+    else:
+        args.idx_2_gpu = [int(_) for _ in args.idx_2_gpu]
 
-        pass
+    print(f"idx_2_gpu: {args.idx_2_gpu}")
+    
+    idx_2_cpu = [_ for _ in range(len(dlrm.emb_l)) if _ not in args.idx_2_gpu]
+    print(f"idx_2_cpu: {idx_2_cpu}")
+    dlrm.idx_2_cpu = idx_2_cpu # Register
+    
+    # Split the model first
+    if use_gpu:
+        model_split_cpu_gpu(
+                dlrm,
+                use_gpu=use_gpu,
+                idx2cpu=idx_2_cpu
+            )
+
+    embedding_sizes = [int(_.num_embeddings) for _ in dlrm.emb_l]
+    cluster_enable = [False for _ in dlrm.emb_l]
+    # Set embedding_sizes to False if not want to cluster
+    
+    for idx in range(len(cluster_enable)):
+        cluster_enable[idx] = True if idx in args.idx_2_gpu else False
+
+    # If it has the transfer map
+    if dlrm.transfer_map != None:
+        print(f"transfer_map loaded: {[len(_) for _ in dlrm.transfer_map]}")
+        
+        # When the dlrm has its previous map
+        new_train_ld, new_test_ld = \
+            dp.new_make_criteo_loaders(
+                args, 
+                train_data=None,
+                test_data=test_data,
+                transfer_map=dlrm.transfer_map
+            )
+    else:
+        print(f"DLRM does not have the Transfer Map...")
+
+        import k_means
+        transfer_map = \
+            k_means.generate_transfer_map(
+                train_dataset=train_data,
+                ln_emb=embedding_sizes,
+                n_clusters=100,
+                enable=cluster_enable
+            )    
+
+        # Exchange to index-transferred DataLoaders
+        new_train_ld, new_test_ld = \
+            dp.new_make_criteo_loaders(
+                args, 
+                train_data=train_data,
+                test_data=test_data,
+                transfer_map=transfer_map
+            )
+
+        # Register to dlrm_net
+        dlrm.transfer_map = transfer_map
+
+    if new_train_ld != None: train_ld = new_train_ld
+    if new_test_ld != None: test_ld = new_test_ld
+
+    #
+    # -- end
 
     print("time/loss/accuracy (if enabled):")
 
-
-    # tb_file = "./" + args.tensor_board_filename
-    # writer = SummaryWriter(tb_file)
 
     with torch.autograd.profiler.profile(
         enabled=False,
@@ -547,7 +541,7 @@ def run():
                         lS_i,
                         use_gpu,
                         device,
-                        ndevices=ndevices,
+                        idx_2_cpu
                     )
 
                     # loss
@@ -625,6 +619,7 @@ def run():
                             test_ld,
                             device,
                             use_gpu,
+                            idx_2_cpu,
                             log_iter,
                         )
 
@@ -640,6 +635,10 @@ def run():
                             model_metrics_dict[
                                 "opt_state_dict"
                             ] = optimizer.state_dict()
+
+                            # added. 
+                            model_metrics_dict['transfer_map'] = dlrm.transfer_map
+
                             print("Saving model to {}".format(args.save_model))
                             torch.save(model_metrics_dict, args.save_model)
 
@@ -655,6 +654,7 @@ def run():
                 test_ld,
                 device,
                 use_gpu,
+                idx_2_cpu
             )
 
     total_time_end = time_wrap(use_gpu)
