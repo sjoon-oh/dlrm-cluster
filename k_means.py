@@ -16,8 +16,9 @@ class ClusterManager():
     def __init__(self, 
             n_clusters, # Given as integer
             n_embeddings, # Given as list
-            lS_i # Given as list of torch.Tensor 
-                # (data_size, # of categorical features)
+            lS_i, # Given as list of torch.Tensor 
+            # (data_size, # of categorical features)
+            file_name='transfer_map'
         ):
 
         self.n_clusters = n_clusters # Number of cluster set
@@ -25,6 +26,8 @@ class ClusterManager():
         self.n_features = len(n_embeddings)
         self.index_transfer_maps = [[] for _ in range(self.n_features)] # Initialize to empty one.
         self.transfer_offsets = [] # 
+
+        self.file_name = file_name
 
         self.queries = lS_i
 
@@ -37,37 +40,55 @@ class ClusterManager():
 
     def doClusterSingle(self, index):
         print(f"Training K-Means for {index}!")
+        fpath = f'{self.file_name}-{index}.json'
 
-        train_q = self.queries[index].numpy().reshape(-1, 1)
+        import os.path
+        import json
 
-        self.k_means_models[index].fit(train_q) # Train
-        cid = self.k_means_models[index].predict(train_q) # Record
+        print(f'Searching for {fpath}')
 
-        print(f"  cid size: {len(cid)}")
-        print(f"  cid max: {max(cid)}")
+        if os.path.exists(fpath): 
+            print(f"Skipping clustering for feature {index}")
+            with open(fpath, 'r') as json_file:
+                tmap = json.load(json_file)
+                self.index_transfer_maps[index] = tmap[str(index)]
 
-        _ = [{} for nc in range(max(cid) + 1)] # Extract only unique indices
-        train_q = train_q.reshape(1, -1).tolist()[0]
+        else:
 
-        for idx in train_q:
-            _[cid[idx]][idx] = 1
+            train_q = self.queries[index].numpy().reshape(-1, 1)
 
-        print(f"  Reconstructing unique maps done.")
-        del train_q
-        _ = [list(cid_s.keys()) for cid_s in _]
+            self.k_means_models[index].fit(train_q) # Train
+            cid = self.k_means_models[index].predict(train_q) # Record
 
-        for cluster in _:
-            self.index_transfer_maps[index].extend(cluster)
-        del _
+            print(f"  cid size: {len(cid)}")
+            print(f"  cid max: {max(cid)}")
 
-        _ = list(range(self.n_embeddings[index]))
-        for idx in self.index_transfer_maps[index]: 
-            _[idx] = 0
-            print(f"\r  Searching unseen... {idx}", end='')
-        self.index_transfer_maps[index].extend([x for x in _ if x != 0])
-        del _
+            _ = [{} for nc in range(max(cid) + 1)] # Extract only unique indices
+            train_q = train_q.reshape(1, -1).tolist()[0]
 
-        print(f"\n  Added unseen indexes.")
+            for idx in train_q:
+                _[cid[idx]][idx] = 1
+
+            print(f"  Reconstructing unique maps done.")
+            del train_q
+            _ = [list(cid_s.keys()) for cid_s in _]
+
+            for cluster in _:
+                self.index_transfer_maps[index].extend(cluster)
+            del _
+
+            _ = list(range(1, self.n_embeddings[index] + 1))
+            for idx in self.index_transfer_maps[index]: 
+                _[idx] = 0
+                print(f"\r  Searching unseen... {idx}", end='')
+            self.index_transfer_maps[index].extend([x for x in _ if x != 0])
+
+            # Generate Backup
+
+            with open(fpath, 'w') as json_file:
+                json.dump({index: self.index_transfer_maps[index]}, json_file)
+            del _
+        
         print(f"  Embeddings: {self.n_embeddings[index]}")
         print(f"  index_transfer_maps[{index}] size: {len(self.index_transfer_maps[index])}")
         print(f"Feature {index} done.\n")
@@ -135,7 +156,7 @@ def console(msg):
 
 #
 #
-def generate_transfer_map(train_dataset, ln_emb, n_clusters, enable):
+def generate_transfer_map(train_dataset, ln_emb, n_clusters, enable, file_name):
     console("generate_transfer_map")
 
     X_cat = torch.tensor(train_dataset.X_cat, dtype=torch.long)
@@ -152,7 +173,8 @@ def generate_transfer_map(train_dataset, ln_emb, n_clusters, enable):
     cl_manager = ClusterManager(
         n_clusters=n_clusters, 
         n_embeddings=ln_emb, 
-        lS_i=lS_i
+        lS_i=lS_i,
+        file_name=file_name
     )
 
     for fea in range(len(ln_emb)):
@@ -205,7 +227,7 @@ if __name__ == '__main__':
     console(f"Calling dp.make_criteo_data_and_loaders...\n")
 
     import dlrm_data as dp
-    import gen_hm
+    
     train_data, train_ld, test_data, test_ld = dp.make_criteo_data_and_loaders(args)
     console(f"Done.")
 

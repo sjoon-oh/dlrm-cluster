@@ -41,6 +41,9 @@ $dlrm_pt_bin \
     --inference-only \
     --use-gpu \
     --den-feature-num=13 \
-    --cat-feature-num=26
+    --cat-feature-num=26 \
+    --clusters=10 \
+    --ignore-transfer-map="no" \
+    --idx-2-gpu 2 11 15 20
 
 echo "done"

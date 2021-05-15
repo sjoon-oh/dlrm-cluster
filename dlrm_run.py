@@ -483,7 +483,8 @@ def run():
                 train_dataset=train_data,
                 ln_emb=embedding_sizes,
                 n_clusters=100,
-                enable=cluster_enable
+                enable=cluster_enable,
+                file_name=f"model/tm-{args.save_model.split('/')[-1].replace('.pt', '')}"
             )    
 
         # Exchange to index-transferred DataLoaders
