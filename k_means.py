@@ -10,7 +10,8 @@ import torch.nn as nn
 import numpy as np
 from sklearn.cluster import KMeans
 
-import copy
+import os.path
+import json
 
 class ClusterManager():
     def __init__(self, 
@@ -40,31 +41,69 @@ class ClusterManager():
     def doClusterSingle2(self, index):
         print(f"Training K-Means using GPU for {index}!")
 
-        from libKMCUDA import kmeans_cuda
+        fpath = f'{self.file_name}-{index}.json'
 
-        train_q = self.queries[index].numpy().reshape(-1, 1)
-        dummy_axis = np.zeros(train_q.shape[0]).reshape(-1, 1) 
+        print(f'Searching for {fpath}')
 
-        train_q = np.concatenate((train_q, dummy_axis), axis=1).astype(np.float32)
+        if os.path.exists(fpath): 
+            print(f"Skipping clustering for feature {index}")
+            with open(fpath, 'r') as json_file:
+                tmap = json.load(json_file)
+                self.index_transfer_maps[index] = tmap[str(index)]
 
-        centroids, assignments = kmeans_cuda(
-            train_q,
-            self.n_clusters,
-            verbosity=1,
-            yinyang_t=0,
-            tolerance=0.002
-        )
+        else:
 
-        self.index_transfer_maps[index] = assignments.tolist()
+            from libKMCUDA import kmeans_cuda
+
+            train_q = self.queries[index].numpy().reshape(-1, 1)
+            dummy_axis = np.zeros(train_q.shape[0]).reshape(-1, 1) 
+
+            train_q = np.concatenate((train_q, dummy_axis), axis=1).astype(np.float32)
+
+            centroids, assignments = kmeans_cuda(
+                train_q,
+                self.n_clusters,
+                verbosity=1,
+                yinyang_t=0,
+                tolerance=0.002
+            )
+
+            cid = assignments.tolist()
+            
+            _ = [{} for nc in range(max(cid) + 1)] # Extract only unique indices
+
+            for idx in train_q[:][0]:
+                _[cid[idx]][idx] = 1
+
+            print(f"  Reconstructing unique maps done.")
+            del train_q
+            _ = [list(cid_s.keys()) for cid_s in _]
+
+            for cluster in _:
+                self.index_transfer_maps[index].extend(cluster)
+            del _
+
+            _ = list(range(1, self.n_embeddings[index] + 1))
+            for idx in self.index_transfer_maps[index]: 
+                _[idx] = 0
+                print(f"\r  Searching unseen... {idx}", end='')
+            self.index_transfer_maps[index].extend([x for x in _ if x != 0])
+
+            # Generate Backup
+
+            with open(fpath, 'w') as json_file:
+                json.dump({index: self.index_transfer_maps[index]}, json_file)
+            del _
+        
+        print(f"  Embeddings: {self.n_embeddings[index]}")
+        print(f"  index_transfer_maps[{index}] size: {len(self.index_transfer_maps[index])}")
+        print(f"Feature {index} done.\n")
 
 
     # Deprecated. Too slow.
     def doClusterSingle(self, index):
         print(f"Training K-Means for {index}!")
         fpath = f'{self.file_name}-{index}.json'
-
-        import os.path
-        import json
 
         print(f'Searching for {fpath}')
 
