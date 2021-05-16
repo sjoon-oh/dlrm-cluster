@@ -37,7 +37,28 @@ class ClusterManager():
                 for _ in range(len(n_embeddings))
         ]
 
+    def doClusterSingle2(self, index):
+        print(f"Training K-Means using GPU for {index}!")
 
+        from libKMCUDA import kmeans_cuda
+
+        train_q = self.queries[index].numpy().reshape(-1, 1)
+        dummy_axis = np.zeros(train_q.shape[0]).reshape(-1, 1) 
+
+        train_q = np.concatenate((train_q, dummy_axis), axis=1).astype(np.float32)
+
+        centroids, assignments = kmeans_cuda(
+            train_q,
+            self.n_clusters,
+            verbosity=1,
+            yinyang_t=0,
+            tolerance=0.002
+        )
+
+        self.index_transfer_maps[index] = assignments.tolist()
+
+
+    # Deprecated. Too slow.
     def doClusterSingle(self, index):
         print(f"Training K-Means for {index}!")
         fpath = f'{self.file_name}-{index}.json'
@@ -93,7 +114,7 @@ class ClusterManager():
         print(f"  index_transfer_maps[{index}] size: {len(self.index_transfer_maps[index])}")
         print(f"Feature {index} done.\n")
 
-
+    # Deprecated
     def doCluster(self):
         for fea in range(self.n_features):
             self.doClusterSingle(fea)
@@ -179,7 +200,7 @@ def generate_transfer_map(train_dataset, ln_emb, n_clusters, enable, file_name):
 
     for fea in range(len(ln_emb)):
         if enable[fea]:
-            cl_manager.doClusterSingle(fea)
+            cl_manager.doClusterSingle2(fea)
         
     print(f"Returning index_transfer_maps")
     return cl_manager.index_transfer_maps
@@ -192,6 +213,7 @@ if __name__ == '__main__':
 
     # This is a test code!
     print('K-Means Clustering Test Snippet\nAuthor: SukJoon Oh\n')
+    exit()
 
     args = initialize() # Load
     nbatches = args.mini_batch_size
