@@ -35,8 +35,8 @@ $dlrm_pt_bin \
     --print-freq=1024 \
     --test-freq=16384 \
     --print-time \
-    --test-mini-batch-size=16384 \
-    --test-num-workers=16 \
+    --test-mini-batch-size=1024 \
+    --test-num-workers=4 \
     --load-model="model/model-kaggle.pt" \
     --inference-only \
     --use-gpu \
