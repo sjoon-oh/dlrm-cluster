@@ -2,15 +2,21 @@
 
 # DLRM Facebookresearch Debloating
 # author: sjoon-oh @ Github
-# source: dlrm/our_test_gpu.py
+# source: dlrm/our_train.py
 
 dlrm_pt_bin="python3 dlrm_run.py"
+
+cluster_size=16
 
 dataset_base_dir="dataset"
 dataset_dir="${dataset_base_dir}/Kaggle"
 
 dataset_proc_base_dir="dataset-processed"
 dataset_proc_dir="${dataset_proc_base_dir}/Kaggle"
+
+model_base_dir="model"
+model_dir="${model_base_dir}/model-kaggle-${cluster_size}.pt"
+
 
 if [ ! -d ${dataset_dir} ]; then
     mkdir ${dataset_base_dir}
@@ -20,10 +26,13 @@ if [ ! -d ${dataset_proc_dir} ]; then
     mkdir ${dataset_proc_base_dir}
     mkdir ${dataset_proc_dir}
 fi
+if [ ! -d ${model_base_dir} ]; then
+    mkdir ${model_base_dir}
+fi
 
-echo "run inference script (pytorch) ..."
+echo "run script (pytorch) ..."
 $dlrm_pt_bin \
-    --arch-sparse-feature-size=16 \
+    --arch-sparse-feature-size=64 \
     --arch-mlp-bot="13-512-256-64-16" \
     --arch-mlp-top="512-256-1" \
     --raw-data-file="${dataset_dir}/train.txt" \
@@ -35,15 +44,14 @@ $dlrm_pt_bin \
     --print-freq=1024 \
     --test-freq=16384 \
     --print-time \
-    --test-mini-batch-size=1024 \
-    --test-num-workers=4 \
-    --load-model="model/model-kaggle.pt" \
-    --inference-only \
-    --use-gpu \
+    --test-mini-batch-size=16384 \
+    --test-num-workers=2 \
+    --save-model="${model_dir}" \
     --den-feature-num=13 \
     --cat-feature-num=26 \
-    --clusters=10 \
-    --ignore-transfer-map="no" \
+    --clusters=${cluster_size} \
+    --ignore-transfer-map="yes" \
     --idx-2-gpu 2 11 15 20
+# --idx-2-gpu 2 11 15 20
 
 echo "done"
