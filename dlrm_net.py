@@ -147,28 +147,11 @@ class DLRM_Net(nn.Module):
         # 3. for a list of embedding tables there is a list of batched lookups
         # print(f"apply_emb:\n  lS_o - {type(lS_o)}\n  lS_i - {type(lS_i)}")
 
-        heatmap_on = False
         figs = []
 
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
             sparse_offset_group_batch = lS_o[k]
-            
-            # Added for Testing
-            if heatmap_on: 
-                try:
-                    label = sorted(list(dict.fromkeys(sparse_index_group_batch.numpy())))
-                    figs.append(HeatMapFeature(len(label)))
-
-                    figs[-1].set_label(label)
-                    figs[-1].record_map(sparse_index_group_batch)
-                    figs[-1].sum_all()
-                    figs[-1].show_plt()
-
-                except Exception as e: 
-                    print(e.message)
-
-            # if k == 0: print(f"feature: {k}, index batch: \n{sparse_index_group_batch}")
 
             # embedding lookup
             # We are using EmbeddingBag, which implicitly uses sum operator.
@@ -188,10 +171,14 @@ class DLRM_Net(nn.Module):
                 per_sample_weights=per_sample_weights,
             )
 
-            if next(self.parameters()).is_cuda == True:
+            if next(self.top_l.parameters()).is_cuda == True:
+                # print(f"Top layer is in CUDA.")
                 if k in self.idx_2_cpu:
                     ly.append(V.cuda())
-                else: ly.append(V.cuda())
+                    # print(f"Feature {k} is moved to CUDA.")
+                else: 
+                    ly.append(V)
+                    # print(f"Feature {k} stays at CPU.")
             else:
                 ly.append(V)
 
@@ -288,6 +275,7 @@ def query_split_cpu_gpu(
             new_lS_i.append(lS_i[idx])
 
     print(f"query_split_cpu_gpu done.")
+    return new_lS_i, new_lS_o
 
 
 
@@ -298,7 +286,7 @@ def dlrm_wrap(dlrm, X, lS_o, lS_i, use_gpu, device, idx_2_cpu):
         # Handle each case below:
         # Assumes that model is already on each device
 
-        query_split_cpu_gpu(
+        lS_i, lS_o = query_split_cpu_gpu(
             dlrm,
             lS_o=lS_o,
             lS_i=lS_i,

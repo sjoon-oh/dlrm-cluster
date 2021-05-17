@@ -646,6 +646,8 @@ def run():
                 k += 1  # nepochs
             
         else:
+            tm = time.time() # Added.
+
             print("Testing for inference only")
             inference(
                 args,
@@ -657,6 +659,10 @@ def run():
                 use_gpu,
                 idx_2_cpu
             )
+
+            if use_gpu:
+                torch.cuda.synchronize()
+            print('total forward time: %f s' % (time.time() - tm)) 
 
     total_time_end = time_wrap(use_gpu)
 
