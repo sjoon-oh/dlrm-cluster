@@ -29,7 +29,7 @@ fi
 echo "run inference script (pytorch) ..."
 $dlrm_pt_bin \
     --arch-sparse-feature-size=64 \
-    --arch-mlp-bot="13-512-256-64-16" \
+    --arch-mlp-bot="13-512-256-64" \
     --arch-mlp-top="512-256-1" \
     --raw-data-file="${dataset_dir}/train.txt" \
     --processed-data-file="${dataset_proc_dir}/kaggle.npz" \
