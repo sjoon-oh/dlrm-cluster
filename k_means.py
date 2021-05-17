@@ -68,11 +68,11 @@ class ClusterManager():
                 tolerance=0.002
             )
 
-            cid = assignments.tolist()
+            cid = assignments.astype(int).tolist()
             
             _ = [{} for nc in range(max(cid) + 1)] # Extract only unique indices
 
-            for idx in train_q[:][0]:
+            for idx in train_q[:][0].astype(int):
                 _[cid[idx]][idx] = 1
 
             print(f"  Reconstructing unique maps done.")
@@ -88,6 +88,9 @@ class ClusterManager():
                 _[idx] = 0
                 print(f"\r  Searching unseen... {idx}", end='')
             self.index_transfer_maps[index].extend([x for x in _ if x != 0])
+
+            # Transform int64 to int since not serializable.
+            self.index_transfer_maps[index] = [int(x) for x in self.index_transfer_maps[index]]
 
             # Generate Backup
 
@@ -239,7 +242,7 @@ def generate_transfer_map(train_dataset, ln_emb, n_clusters, enable, file_name):
 
     for fea in range(len(ln_emb)):
         if enable[fea]:
-            cl_manager.doClusterSingle2(fea)
+            cl_manager.doClusterSingle2(fea) # Fixed
         
     print(f"Returning index_transfer_maps")
     return cl_manager.index_transfer_maps

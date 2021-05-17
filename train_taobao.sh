@@ -12,6 +12,9 @@ dataset_dir="${dataset_base_dir}/user-behav-taobao"
 dataset_proc_base_dir="dataset-processed"
 dataset_proc_dir="${dataset_proc_base_dir}/user-behav-taobao"
 
+model_base_dir="model"
+model_dir="${model_base_dir}/model-user-behav-taobao.pt"
+
 if [ ! -d ${dataset_dir} ]; then
     mkdir ${dataset_base_dir}
     mkdir ${dataset_dir}
@@ -19,6 +22,9 @@ fi
 if [ ! -d ${dataset_proc_dir} ]; then
     mkdir ${dataset_proc_base_dir}
     mkdir ${dataset_proc_dir}
+fi
+if [ ! -d ${model_base_dir} ]; then
+    mkdir ${model_base_dir}
 fi
 
 echo "run script (pytorch) ..."
@@ -37,8 +43,12 @@ $dlrm_pt_bin \
     --print-time \
     --test-mini-batch-size=16384 \
     --test-num-workers=2 \
-    --save-model="model/model-kaggle.pt" \
+    --save-model="${model_dir}" \
     --den-feature-num=1 \
-    --cat-feature-num=7
+    --cat-feature-num=7 \
+    --clusters=10 \
+    --ignore-transfer-map="yes" \
+    --idx-2-gpu 2 11 15 20
+# --idx-2-gpu 2 11 15 20
 
 echo "done"
