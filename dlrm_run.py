@@ -460,7 +460,7 @@ def run():
     # Set embedding_sizes to False if not want to cluster
     
     for idx in range(len(cluster_enable)):
-        cluster_enable[idx] = True if idx in args.idx_2_gpu else False
+        cluster_enable[idx] = False if idx in args.idx_2_gpu else True
 
     # If it has the transfer map
     if dlrm.transfer_map != None:

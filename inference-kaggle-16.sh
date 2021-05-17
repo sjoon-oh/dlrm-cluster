@@ -49,6 +49,7 @@ $dlrm_pt_bin \
     --cat-feature-num=26 \
     --clusters=${cluster_size} \
     --ignore-transfer-map="no" \
-    --idx-2-gpu 2 11 15 20
+    --idx-2-gpu 0 1 3 4 5 6 7 8 9 10 12 13 14 16 17 18 19 21 22 23 24 25
+    #--idx-2-gpu 2 11 15 20
 
 echo "done"
