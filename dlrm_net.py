@@ -292,7 +292,8 @@ def model_split_cpu_gpu(
 
         for idx in range(len(dlrm.emb_l)):
             if idx not in idx2cpu:
-                dlrm.emb_l[idx].to(device)
+                if dlrm.emb_l[idx] != None:
+                    dlrm.emb_l[idx].to(device)
                 # Move to GPU
 
     print(f"model_split_cpu_gpu done.")
