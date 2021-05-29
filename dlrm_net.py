@@ -51,8 +51,12 @@ class DLRM_Net(nn.Module):
             self.sync_dense_params = sync_dense_params
             self.loss_function=loss_function
 
-            self.transfer_map = None # Added.
+            # self.transfer_map = None # Added.
             self.idx_2_cpu = []
+
+            self.is_memoized = False
+            self.memoize_idx = []
+            self.memoize_offsets = []
 
             # create operators
             if ndevices <= 1:
@@ -139,50 +143,87 @@ class DLRM_Net(nn.Module):
         return layers(x)
 
     def apply_emb(self, lS_o, lS_i, emb_l, v_W_l):
-        # WARNING: notice that we are processing the batch at once. We implicitly
-        # assume that the data is laid out such that:
-        # 1. each embedding is indexed with a group of sparse indices,
-        #   corresponding to a single lookup
-        # 2. for each embedding the lookups are further organized into a batch
-        # 3. for a list of embedding tables there is a list of batched lookups
-        # print(f"apply_emb:\n  lS_o - {type(lS_o)}\n  lS_i - {type(lS_i)}")
-
-        figs = []
-
+        
+        # memoized_vec_l = None # Memoized vector lists
         ly = []
+
         for k, sparse_index_group_batch in enumerate(lS_i):
             sparse_offset_group_batch = lS_o[k]
 
-            # embedding lookup
-            # We are using EmbeddingBag, which implicitly uses sum operator.
-            # The embeddings are represented as tall matrices, with sum
-            # happening vertically across 0 axis, resulting in a row vector
-            # E = emb_l[k]
+            if self.is_memoized: # When true,
+                if (k in self.memoize_idx) and (k != self.memoize_idx[-1]): # if in memoized table
+                    ly.append(None)
+                else:
+                    if v_W_l[k] is not None:
+                        per_sample_weights = v_W_l[k].gather(0, sparse_index_group_batch)
+                    else:
+                        per_sample_weights = None
 
-            if v_W_l[k] is not None:
-                per_sample_weights = v_W_l[k].gather(0, sparse_index_group_batch)
+                    E = emb_l[k]
+                    V = E(
+                        sparse_index_group_batch,
+                        sparse_offset_group_batch,
+                        per_sample_weights=per_sample_weights,
+                    )
+
+                    if next(self.top_l.parameters()).is_cuda == True:
+                        if k in self.idx_2_cpu:
+                            ly.append(V.cuda())
+                        else: 
+                            ly.append(V)
+                    else:
+                        ly.append(V)
+
+                    # print(type(V))
+                    # Type: torch.Tensor
             else:
-                per_sample_weights = None
+                print("Not implemented for now (apply_emb)")
+        
+        split_tensor = list(
+            torch.tensor_split(
+                ly[self.memoize_idx[-1]], 
+                len(self.memoize_idx), 
+                dim=1))
+        
+        # print(f"len: {len(split_tensor)}, shapes: {[_.shape for _ in split_tensor ]}")
 
-            E = emb_l[k]
-            V = E(
-                sparse_index_group_batch,
-                sparse_offset_group_batch,
-                per_sample_weights=per_sample_weights,
-            )
+        for idx in range(len(split_tensor)):
+            ly[self.memoize_idx[idx]] = split_tensor[idx]
 
-            if next(self.top_l.parameters()).is_cuda == True:
-                # print(f"Top layer is in CUDA.")
-                if k in self.idx_2_cpu:
-                    ly.append(V.cuda())
-                    # print(f"Feature {k} is moved to CUDA.")
-                else: 
-                    ly.append(V)
-                    # print(f"Feature {k} stays at CPU.")
-            else:
-                ly.append(V)
+        # print(f"chk - len: {len(ly)}, types: {[type(_) for _ in ly ]}, shapes: {[_.shape for _ in split_tensor ]}")
 
         return ly
+
+        #
+        # Below is the original
+
+        # ly = []
+        # for k, sparse_index_group_batch in enumerate(lS_i):
+        #     sparse_offset_group_batch = lS_o[k]
+
+        #     if v_W_l[k] is not None:
+        #         per_sample_weights = v_W_l[k].gather(0, sparse_index_group_batch)
+        #     else:
+        #         per_sample_weights = None
+
+        #     E = emb_l[k]
+        #     V = E(
+        #         sparse_index_group_batch,
+        #         sparse_offset_group_batch,
+        #         per_sample_weights=per_sample_weights,
+        #     )
+
+        #     if next(self.top_l.parameters()).is_cuda == True:
+        #         if k in self.idx_2_cpu:
+        #             ly.append(V.cuda())
+        #         else: 
+        #             ly.append(V)
+        #     else:
+        #         ly.append(V)
+
+        # return ly
+
+
 
     def interact_features(self, x, ly):
 

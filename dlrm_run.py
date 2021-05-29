@@ -421,12 +421,12 @@ def run():
             args.print_freq = ld_nbatches
             args.test_freq = 0
 
-        if args.ignore_transfer_map == 'yes':
-            dlrm.transfer_map = None
-        else:
-            dlrm.transfer_map = ld_model['transfer_map']
+        # if args.ignore_transfer_map == 'yes':
+        #     dlrm.transfer_map = None
+        # else:
+        #     dlrm.transfer_map = ld_model['transfer_map']
 
-        print(f"type: {type(dlrm.transfer_map)}")
+        # print(f"type: {type(dlrm.transfer_map)}")
 
         print("Saved at: epoch = {:d}/{:d}, batch = {:d}/{:d}, ntbatch = {:d}".format(
                 ld_k, ld_nepochs, ld_j, ld_nbatches, ld_nbatches_test
@@ -457,50 +457,115 @@ def run():
 
     embedding_sizes = [int(_.num_embeddings) for _ in dlrm.emb_l]
     cluster_enable = [False for _ in dlrm.emb_l]
+    print(f"Embedding size: {embedding_sizes}")
     # Set embedding_sizes to False if not want to cluster
     
     for idx in range(len(cluster_enable)):
         cluster_enable[idx] = False if idx in args.idx_2_gpu else True
 
-    # If it has the transfer map
-    if dlrm.transfer_map != None:
-        print(f"transfer_map loaded: {[len(_) for _ in dlrm.transfer_map]}")
+    #
+    # Manually put the weights.
+    dlrm.is_memoized = True
+    memoize_idx = [4, 5]
+    memoize_offsets = [embedding_sizes[idx] for idx in memoize_idx]
+
+    print(f"Memoization: Indices - {memoize_idx}, Offsets - {memoize_offsets}")
+
+    # Set the size
+    new_emb_h = len(memoize_idx) * args.arch_sparse_feature_size
+    new_emb_w = 1
+    for size in memoize_offsets:
+        new_emb_w = new_emb_w * size
+
+    # Register to DLRM model
+    # Deactivate the weights
+    for idx in memoize_idx:
+        dlrm.emb_l[idx] = None
+    
+    # Register new embeddingbag.
+    dlrm.memoize_idx = memoize_idx
+    dlrm.memoize_offsets = memoize_offsets
+
+    EE = nn.EmbeddingBag(new_emb_w, new_emb_h, mode="sum", sparse=True)
+    W = np.random.uniform(
+        low=-np.sqrt(1 / new_emb_w), high=np.sqrt(1 / new_emb_w), size=(new_emb_w, new_emb_h)   
+    ).astype(np.float32)
+
+    EE.weight.data = torch.tensor(W, requires_grad=True)
+
+    # Register at the end of memoized ones.
+    dlrm.emb_l[memoize_idx[-1]] = EE
+
+    embedding_sizes = []
+    for _ in dlrm.emb_l:
+        if _ != None: embedding_sizes.append(int(_.num_embeddings))
+        else: embedding_sizes.append(0)
+
+    print(f"Embedding size modified: {embedding_sizes}")
+
+    # Mod new
+    memoize_offsets.append(1)
+    memoize_offsets.reverse()
+    
+    for idx in range(1, len(memoize_offsets)):
+        memoize_offsets[idx] = memoize_offsets[idx] * memoize_offsets[idx - 1]
+
+    memoize_offsets.reverse()
+    del memoize_offsets[0]
+
+    print(f"Memoization: Offsets - {memoize_offsets}")
+    
+    train_data, train_ld, test_data, test_ld = dp.new_make_criteo_loaders(
+        args=args,
+        train_data=train_data,
+        test_data=test_data,
+        memoize_idx=memoize_idx,
+        memoize_offset=memoize_offsets
+    )
+
+    # exit(0)
+
+    # Below is disabled.
+
+    # # If it has the transfer map
+    # if dlrm.transfer_map != None:
+    #     print(f"transfer_map loaded: {[len(_) for _ in dlrm.transfer_map]}")
         
-        # When the dlrm has its previous map
-        new_train_ld, new_test_ld = \
-            dp.new_make_criteo_loaders(
-                args, 
-                train_data=None,
-                test_data=test_data,
-                transfer_map=dlrm.transfer_map
-            )
-    else:
-        print(f"DLRM does not have the Transfer Map...")
+    #     # When the dlrm has its previous map
+    #     new_train_ld, new_test_ld = \
+    #         dp.new_make_criteo_loaders(
+    #             args, 
+    #             train_data=None,
+    #             test_data=test_data,
+    #             transfer_map=dlrm.transfer_map
+    #         )
+    # else:
+    #     print(f"DLRM does not have the Transfer Map...")
 
-        import k_means
-        transfer_map = \
-            k_means.generate_transfer_map(
-                train_dataset=train_data,
-                ln_emb=embedding_sizes,
-                n_clusters=100,
-                enable=cluster_enable,
-                file_name=f"model/tm-{args.save_model.split('/')[-1].replace('.pt', '')}"
-            )    
+    #     import k_means
+    #     transfer_map = \
+    #         k_means.generate_transfer_map(
+    #             train_dataset=train_data,
+    #             ln_emb=embedding_sizes,
+    #             n_clusters=100,
+    #             enable=cluster_enable,
+    #             file_name=f"model/tm-{args.save_model.split('/')[-1].replace('.pt', '')}"
+    #         )    
 
-        # Exchange to index-transferred DataLoaders
-        new_train_ld, new_test_ld = \
-            dp.new_make_criteo_loaders(
-                args, 
-                train_data=train_data,
-                test_data=test_data,
-                transfer_map=transfer_map
-            )
+    #     # Exchange to index-transferred DataLoaders
+    #     new_train_ld, new_test_ld = \
+    #         dp.new_make_criteo_loaders(
+    #             args, 
+    #             train_data=train_data,
+    #             test_data=test_data,
+    #             transfer_map=transfer_map
+    #         )
 
-        # Register to dlrm_net
-        dlrm.transfer_map = transfer_map
+    #     # Register to dlrm_net
+    #     dlrm.transfer_map = transfer_map
 
-    if new_train_ld != None: train_ld = new_train_ld
-    if new_test_ld != None: test_ld = new_test_ld
+    # if new_train_ld != None: train_ld = new_train_ld
+    # if new_test_ld != None: test_ld = new_test_ld
 
     #
     # -- end
@@ -638,7 +703,7 @@ def run():
                             ] = optimizer.state_dict()
 
                             # added. 
-                            model_metrics_dict['transfer_map'] = dlrm.transfer_map
+                            # model_metrics_dict['transfer_map'] = dlrm.transfer_map
 
                             print("Saving model to {}".format(args.save_model))
                             torch.save(model_metrics_dict, args.save_model)

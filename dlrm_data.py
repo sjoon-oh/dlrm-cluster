@@ -276,11 +276,9 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
 
 
 
-#
-# Added.
 
-# This function should be called right after the generation of DLRM_NET
-def new_make_criteo_loaders(args, train_data, test_data, transfer_map):
+# Added 2.
+def new_make_criteo_loaders(args, train_data, test_data, memoize_idx, memoize_offset):
 
     # Arguments are originla train_data and test_data
     print("new_make_criteo_loaders")
@@ -288,20 +286,23 @@ def new_make_criteo_loaders(args, train_data, test_data, transfer_map):
     # Rearrange
     # test_data.X_cat is the list of np.array
     print("Rearranging train_data, test_data indices")
-    print(f"transfer_map: {type(transfer_map)}")
-    print(f"transfer_map: len - {[len(lst) for lst in transfer_map]}")
-    # Transfermap : list of list
-
+    print(f"ARGS: mem_idx: {memoize_idx}, mem_offset: {memoize_offset}")
     print("Generating new train_loader and test_loader.")
 
-    if train_data != None:
-        X_cat = train_data.X_cat
-        print(f"X_cat (train_data): {len(X_cat)}")
-        for line in X_cat:
-            for fea in range(line.shape[0]):
-                if len(transfer_map[fea]) != 0:
-                    line[fea] = transfer_map[fea][int(line[fea])]
-        
+    # total_lines = len(train_data.X_cat)
+    print(f"X_cat size: {len(train_data.X_cat)}")
+
+    print(f"Sample Query\nBefore: {train_data.X_cat[0]}")
+
+    # Original train_data
+    for line in train_data.X_cat:
+
+        new_idx = 0
+        for idx in range(len(memoize_idx)):
+            new_idx += (memoize_offset[idx] * line[memoize_idx[idx]])
+
+        line[memoize_idx[-1]] = new_idx
+
         new_train_loader = torch.utils.data.DataLoader(
             train_data,
             batch_size=args.mini_batch_size,
@@ -312,31 +313,90 @@ def new_make_criteo_loaders(args, train_data, test_data, transfer_map):
             drop_last=False,  # True
         )
     
-    else:
-        new_train_loader = None
+    print(f"After: {train_data.X_cat[0]}")
 
-    if test_data != None:
-        X_cat = test_data.X_cat
-        print(f"X_cat (test_data): {len(X_cat)}")
-        for line in X_cat:
-            for fea in range(line.shape[0]):
-                if len(transfer_map[fea]) != 0:
-                    line[fea] = transfer_map[fea][int(line[fea])]
+    for line in test_data.X_cat:
+
+        new_idx = 0
+        for idx in range(len(memoize_idx)):
+            new_idx += (memoize_offset[idx] * line[memoize_idx[idx]])
+
+        line[memoize_idx[-1]] = new_idx
 
         new_test_loader = torch.utils.data.DataLoader(
             test_data,
-            batch_size=args.test_mini_batch_size,
+            batch_size=args.mini_batch_size,
             shuffle=False,
-            num_workers=args.test_num_workers,
+            num_workers=args.num_workers,
             collate_fn=collate_wrapper_criteo_offset,
             pin_memory=False,
             drop_last=False,  # True
         )
 
-    else:
-        new_test_loader = None
+    return train_data, new_train_loader, test_data, new_test_loader
 
-    return new_train_loader, new_test_loader
+
+#
+# Added.
+
+# This function should be called right after the generation of DLRM_NET
+# def new_make_criteo_loaders(args, train_data, test_data, transfer_map):
+
+#     # Arguments are originla train_data and test_data
+#     print("new_make_criteo_loaders")
+
+#     # Rearrange
+#     # test_data.X_cat is the list of np.array
+#     print("Rearranging train_data, test_data indices")
+#     print(f"transfer_map: {type(transfer_map)}")
+#     print(f"transfer_map: len - {[len(lst) for lst in transfer_map]}")
+#     # Transfermap : list of list
+
+#     print("Generating new train_loader and test_loader.")
+
+#     if train_data != None:
+#         X_cat = train_data.X_cat
+#         print(f"X_cat (train_data): {len(X_cat)}")
+#         for line in X_cat:
+#             for fea in range(line.shape[0]):
+#                 if len(transfer_map[fea]) != 0:
+#                     line[fea] = transfer_map[fea][int(line[fea])]
+        
+#         new_train_loader = torch.utils.data.DataLoader(
+#             train_data,
+#             batch_size=args.mini_batch_size,
+#             shuffle=False,
+#             num_workers=args.num_workers,
+#             collate_fn=collate_wrapper_criteo_offset,
+#             pin_memory=False,
+#             drop_last=False,  # True
+#         )
+    
+#     else:
+#         new_train_loader = None
+
+#     if test_data != None:
+#         X_cat = test_data.X_cat
+#         print(f"X_cat (test_data): {len(X_cat)}")
+#         for line in X_cat:
+#             for fea in range(line.shape[0]):
+#                 if len(transfer_map[fea]) != 0:
+#                     line[fea] = transfer_map[fea][int(line[fea])]
+
+#         new_test_loader = torch.utils.data.DataLoader(
+#             test_data,
+#             batch_size=args.test_mini_batch_size,
+#             shuffle=False,
+#             num_workers=args.test_num_workers,
+#             collate_fn=collate_wrapper_criteo_offset,
+#             pin_memory=False,
+#             drop_last=False,  # True
+#         )
+
+#     else:
+#         new_test_loader = None
+
+#     return new_train_loader, new_test_loader
 
 
 # WARNING: global define, must be consistent across all synthetic functions
